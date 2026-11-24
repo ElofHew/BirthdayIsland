@@ -143,9 +143,9 @@ public partial class BirthdaySettingsPage : SettingsPageBase
         var nameBox = new TextBox { Text = person.Name, Watermark = "姓名" };
         var birthdayBox = new TextBox
         {
-            Text = string.IsNullOrWhiteSpace(person.RawBirthday)
-                ? person.Birthday.ToString("yyyy-MM-dd")
-                : person.RawBirthday,
+            // 走 BirthdayText：老数据里 RawBirthday 可能还是 Excel 日期序列号（46192），
+            // 直接显示就是一串莫名其妙的数字。
+            Text = BirthdayText.ToEditable(person),
             Watermark = "2008-03-27 / 3月27日 / 03-27"
         };
         var classBox = new TextBox { Text = person.ClassName ?? string.Empty, Watermark = "班级（可选）" };

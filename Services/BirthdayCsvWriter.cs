@@ -25,18 +25,13 @@ public static class BirthdayCsvWriter
         {
             builder.AppendLine(string.Join(",",
                 Escape(person.Name),
-                Escape(GetBirthdayText(person)),
+                Escape(BirthdayText.ToEditable(person)),
                 Escape(person.ClassName ?? string.Empty),
                 Escape(person.Remark ?? string.Empty)));
         }
 
         return builder.ToString();
     }
-
-    private static string GetBirthdayText(BirthdayPerson person) =>
-        string.IsNullOrWhiteSpace(person.RawBirthday)
-            ? person.Birthday.ToString("yyyy-MM-dd")
-            : person.RawBirthday;
 
     /// <summary>按 RFC 4180 转义：含逗号、引号或换行的字段整体加引号，内部引号翻倍。</summary>
     private static string Escape(string value)

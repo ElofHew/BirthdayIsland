@@ -137,7 +137,7 @@ public class ExcelImportService
                     continue;
 
                 var birthdayCell = row.Cell(birthdayCol);
-                string rawBirthday = birthdayCell.GetString().Trim();
+                string cellText = birthdayCell.GetString().Trim();
 
                 if (!TryParseBirthday(birthdayCell, out var birthday))
                 {
@@ -145,13 +145,19 @@ public class ExcelImportService
                     {
                         RowNumber = rowNumber,
                         RawName = name,
-                        RawBirthday = rawBirthday,
-                        Reason = string.IsNullOrWhiteSpace(rawBirthday)
+                        RawBirthday = cellText,
+                        Reason = string.IsNullOrWhiteSpace(cellText)
                             ? "生日为空"
-                            : $"无法识别生日格式：{rawBirthday}"
+                            : $"无法识别生日格式：{cellText}"
                     });
                     continue;
                 }
+
+                // 只有文本单元格才值得存原始文本。日期/数字单元格 GetString() 得到的是
+                // 日期序列号（46192 这种），存进 RawBirthday 之后编辑框里就会显示这串数字。
+                string rawBirthday = birthdayCell.DataType == XLDataType.Text
+                    ? cellText
+                    : birthday.ToString("yyyy-MM-dd");
 
                 result.People.Add(new BirthdayPerson
                 {
