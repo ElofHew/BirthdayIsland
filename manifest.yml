@@ -1,7 +1,7 @@
 id: PikaBoo0.birthdayisland
 name: 生日显示插件
 apiVersion: 2.0.0.0
-description: 在 ClassIsland 主界面显示今日生日人数，并支持从 .xlsx / .csv 表格导入姓名与生日数据。
+description: 在 ClassIsland 主界面显示今日生日人数，支持定时生日提醒与生日歌，可从 .xlsx / .csv 表格导入并管理名单。
 entranceAssembly: "BirthdayIsland.dll"
 author: PikaBoo0
 url: https://github.com/PikaNova/BirthdayIsland
