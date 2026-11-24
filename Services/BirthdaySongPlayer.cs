@@ -17,6 +17,9 @@ namespace BirthdayIsland.Services;
 /// </remarks>
 public class BirthdaySongPlayer
 {
+    /// <summary>随插件一起打包的生日歌文件名。放在 .cipx 根目录，和插件 dll 同级。</summary>
+    public const string BundledSongFileName = "BirthdaySong.mp3";
+
     private readonly IAudioService _audioService;
     private readonly ILogger<BirthdaySongPlayer> _logger;
 
@@ -29,17 +32,50 @@ public class BirthdaySongPlayer
     }
 
     /// <summary>
+    /// 插件自带的生日歌的完整路径。
+    /// </summary>
+    /// <remarks>
+    /// 用程序集所在目录而不是 <c>AppContext.BaseDirectory</c>：后者是宿主 ClassIsland 的目录，
+    /// 插件实际被解压到 <c>Plugins/&lt;id&gt;/</c> 下，两者并不相同。
+    /// </remarks>
+    public static string BundledSongPath
+    {
+        get
+        {
+            string directory = Path.GetDirectoryName(typeof(BirthdaySongPlayer).Assembly.Location)
+                               ?? AppContext.BaseDirectory;
+            return Path.Combine(directory, BundledSongFileName);
+        }
+    }
+
+    /// <summary>
+    /// 解析实际要播放的文件：配置里填了能用的路径就用它，否则回退到插件自带的那首。
+    /// </summary>
+    /// <remarks>
+    /// 回退而不是报错，是为了兼容老配置 —— 之前版本把某个绝对路径写进了默认值，
+    /// 换台机器那个路径不存在，用户不应该为此看到「播不出声」。
+    /// </remarks>
+    public static string ResolveSongPath(string? configured)
+    {
+        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured))
+            return configured;
+
+        return BundledSongPath;
+    }
+
+    /// <summary>
     /// 播放生日歌。不阻塞调用方，出错只记日志（音频设备缺失不该让提醒本身失败）。
     /// </summary>
-    /// <param name="path">音频文件路径。</param>
+    /// <param name="path">音频文件路径；空则使用插件自带的生日歌。</param>
     /// <param name="seconds">播放秒数；0 或负数表示完整播放。</param>
     public void Play(string path, int seconds)
     {
         Stop();
 
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        string resolved = ResolveSongPath(path);
+        if (!File.Exists(resolved))
         {
-            _logger.LogWarning("生日歌文件不存在，跳过播放：{Path}", path);
+            _logger.LogWarning("生日歌文件不存在，跳过播放：{Path}", resolved);
             return;
         }
 
@@ -55,7 +91,7 @@ public class BirthdaySongPlayer
         {
             try
             {
-                await _audioService.PlayAudioAsync(path, 1.0f, cts.Token);
+                await _audioService.PlayAudioAsync(resolved, 1.0f, cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -63,7 +99,7 @@ public class BirthdaySongPlayer
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "播放生日歌失败：{Path}", path);
+                _logger.LogError(ex, "播放生日歌失败：{Path}", resolved);
             }
             finally
             {

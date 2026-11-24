@@ -72,6 +72,11 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
         ? $"每天 {Reminder.Hour:00}:{Reminder.Minute:00} 提醒"
         : "定时提醒未启用";
 
+    /// <summary>生日歌路径的展示文本。配置为空表示用插件包里自带的那首。</summary>
+    public string SongPathDisplay => string.IsNullOrWhiteSpace(Reminder.SongPath)
+        ? $"（使用插件自带：{BirthdaySongPlayer.BundledSongFileName}）"
+        : Reminder.SongPath;
+
     public string LastImportFileName => _dataService.LastImportFileName ?? "（尚未导入）";
 
     public string LastImportTimeText =>
@@ -179,6 +184,7 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
             _dataService.Save();
 
         OnPropertyChanged(nameof(ReminderSummary));
+        OnPropertyChanged(nameof(SongPathDisplay));
         OnPropertyChanged(nameof(SelectedSongDurationIndex));
     }
 
@@ -307,6 +313,17 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
         StatusMessage = $"生日歌已设为：{Path.GetFileName(path)}";
     }
 
+    /// <summary>清空自定义路径，回到插件包里自带的那首。</summary>
+    [RelayCommand]
+    private void ResetSong()
+    {
+        if (string.IsNullOrWhiteSpace(Reminder.SongPath))
+            return;
+
+        Reminder.SongPath = string.Empty;
+        StatusMessage = "已恢复为插件自带的生日歌。";
+    }
+
     [RelayCommand]
     private void Reload()
     {
@@ -333,6 +350,7 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
         OnPropertyChanged(nameof(LastImportFileName));
         OnPropertyChanged(nameof(LastImportTimeText));
         OnPropertyChanged(nameof(ReminderSummary));
+        OnPropertyChanged(nameof(SongPathDisplay));
         OnPropertyChanged(nameof(SelectedSongDurationIndex));
     }
 

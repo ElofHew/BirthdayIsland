@@ -95,9 +95,10 @@
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <TextBlock Text="音乐文件" VerticalAlignment="Center" Width="72" />
-                                <TextBox Text="{Binding Reminder.SongPath}" IsReadOnly="True"
-                                         Width="380" VerticalAlignment="Center" />
+                                <TextBox Text="{Binding SongPathDisplay}" IsReadOnly="True"
+                                         Width="320" VerticalAlignment="Center" />
                                 <Button Content="选择…" Command="{Binding PickSongCommand}" />
+                                <Button Content="恢复默认" Command="{Binding ResetSongCommand}" />
                             </StackPanel>
                         </StackPanel>
                     </StackPanel>

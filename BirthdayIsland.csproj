@@ -43,6 +43,15 @@
 		<None Update="icon.png">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
+
+		<!-- 生日歌随插件一起分发。源码放在 Assets/ 里便于管理，构建时用 Link 平铺到输出目录根部，
+		     运行时按「程序集所在目录 + BirthdaySong.mp3」去找，打包脚本再按文件名收进 .cipx。
+		     CopyToOutputDirectory 用 Always 而不是 PreserveNewest：MSBuild 复制会连源文件的
+		     修改时间一起带过去，「输出比源新」的判断可能在改过素材后仍然成立，于是静默跳过复制，
+		     打出来的包里还是上一版音频（manifest 上踩过同样的坑，见 build.ps1 的同步步骤）。 -->
+		<None Include="Assets\BirthdaySong.mp3" Link="BirthdaySong.mp3">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
 	</ItemGroup>
 
 </Project>

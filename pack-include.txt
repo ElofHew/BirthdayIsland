@@ -1,6 +1,10 @@
 # 除了插件自己的 dll 之外，还要打进 .cipx 的文件（从 bin 目录取，每行一个）。
 #
-# 这里全是 ClosedXML 拉进来的第三方依赖，宿主没有，必须随插件走。
+# 生日歌：随插件一起分发，用户不用自己准备文件。运行时按「程序集所在目录 + BirthdaySong.mp3」找，
+# 所以必须平铺在 zip 根目录（不能放进子文件夹）。
+BirthdaySong.mp3
+#
+# 下面这些是 ClosedXML 拉进来的第三方依赖，宿主没有，必须随插件走。
 # ClosedXML 负责解析 .xlsx（OpenXML），所以它身后还跟着 DocumentFormat.OpenXml 那一串：
 #
 #   ClosedXML.dll                 主库

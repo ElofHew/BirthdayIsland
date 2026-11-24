@@ -13,9 +13,6 @@ namespace BirthdayIsland.Models;
 /// </remarks>
 public partial class BirthdayReminderConfig : ObservableObject
 {
-    /// <summary>默认的生日歌位置。可在设置页改成别的文件。</summary>
-    public const string DefaultSongPath = @"D:\WinMusic\AE\BirthdaySong.mp3";
-
     /// <summary>是否启用定时提醒。</summary>
     [ObservableProperty]
     private bool _isEnabled;
@@ -40,9 +37,15 @@ public partial class BirthdayReminderConfig : ObservableObject
     [ObservableProperty]
     private bool _isSongEnabled;
 
-    /// <summary>生日歌文件路径。</summary>
+    /// <summary>
+    /// 生日歌文件路径。
+    /// </summary>
+    /// <remarks>
+    /// 留空表示用插件包里自带的那首（打包在 .cipx 根目录的 BirthdaySong.mp3）。
+    /// 不把某个绝对路径写成默认值：换台机器就失效，而且插件包本来就能自带一份。
+    /// </remarks>
     [ObservableProperty]
-    private string _songPath = DefaultSongPath;
+    private string _songPath = string.Empty;
 
     /// <summary>生日歌播放秒数；0 表示完整播放。</summary>
     [ObservableProperty]
