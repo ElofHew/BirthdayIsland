@@ -32,7 +32,7 @@ https://github.com/PikaNova/BirthdayIsland
 | 提醒时间 | 每天触发提醒的时刻（时 / 分） |
 | 正文时长 | 浮在桌面上的那条祝福停留 3 / 5 / 10 秒 |
 | 遮罩时长 | 全屏遮罩停留 1 / 2 / 3 秒 |
-| 播放生日歌 | 提醒时同时播放；可另选音频文件（默认 `D:\WinMusic\AE\BirthdaySong.mp3`） |
+| 播放生日歌 | 提醒时同时播放；默认播放插件自带的 `BirthdaySong.mp3`，也可以另选本地音频文件 |
 | 播放时长 | 30 / 45 / 60 / 75 秒，或完整播放 |
 
 提醒文案：单人「张三，祝你生日快乐！」；多人「李四、王五，祝你们生日快乐！」
@@ -43,6 +43,7 @@ https://github.com/PikaNova/BirthdayIsland
 - 应用在提醒时刻之后 5 分钟内启动会补发一次；超过 5 分钟就跳过，避免晚上开电脑突然弹早上的提醒。
 - 提醒是通过插件注册的「生日提醒」提醒提供方发出的，可以在 ClassIsland 的【设置 → 提醒】里单独给它调音效和特效。
 - 生日歌走宿主自带的音频服务播放，运行环境里不需要额外的播放器。
+- 生日歌文件随插件一起打包（`.cipx` 根目录的 `BirthdaySong.mp3`），装好就能用；换成自己的音乐点「选择…」，想换回自带的点「恢复默认」。
 
 ## 名单管理
 
@@ -108,6 +109,7 @@ pwsh ./build.ps1
 ```
 
 > 工程用 `ProjectReference` 引用 `../../ClassIsland.Core`，所以本仓库必须放在 ClassIsland 源码树的 `plugins/BirthdayIsland` 下。
-> 打包清单在 `pack-include.txt`（ClosedXML 那一串第三方 dll），产物输出到 `cipx/`。
+> 打包清单在 `pack-include.txt`（ClosedXML 那一串第三方 dll + 生日歌），产物输出到 `cipx/`。
+> 生日歌源码放在 `Assets/BirthdaySong.mp3`，构建时按 Link 平铺到输出目录，运行时按程序集目录查找。
 
 使用Opus 4.8辅助开发
