@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using BirthdayIsland.Models;
 using BirthdayIsland.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -24,6 +25,7 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
 
     private readonly BirthdayDataService _dataService;
     private readonly ExcelImportService _excelImportService;
+    private readonly BirthdaySongPlayer _songPlayer;
 
     /// <summary>由设置页在加载后注入，用于弹出系统文件选择器。</summary>
     public Func<Task<IReadOnlyList<IStorageFile>>>? PickFilesAsync { get; set; }
@@ -63,6 +65,9 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
     public bool HasTodayBirthdays => TodayBirthdays.Count > 0;
 
     public bool HasVisiblePeople => VisiblePeople.Count > 0;
+
+    /// <summary>设置页那个手动按钮的文字，跟着播放状态走。</summary>
+    public string SongToggleText => _songPlayer.IsPlaying ? "停止播放" : "播放生日歌";
 
     public string VisibleCountText => SearchText.Trim().Length == 0
         ? $"共 {People.Count} 人"
@@ -146,10 +151,12 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
 
     public BirthdaySettingsPageViewModel(
         BirthdayDataService dataService,
-        ExcelImportService excelImportService)
+        ExcelImportService excelImportService,
+        BirthdaySongPlayer songPlayer)
     {
         _dataService = dataService;
         _excelImportService = excelImportService;
+        _songPlayer = songPlayer;
     }
 
     /// <summary>
@@ -165,6 +172,9 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
         Reminder.PropertyChanged -= OnReminderChanged;
         Reminder.PropertyChanged += OnReminderChanged;
 
+        _songPlayer.PlaybackStateChanged -= OnPlaybackStateChanged;
+        _songPlayer.PlaybackStateChanged += OnPlaybackStateChanged;
+
         Refresh();
     }
 
@@ -172,9 +182,16 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
     {
         _dataService.DataChanged -= OnDataChanged;
         Reminder.PropertyChanged -= OnReminderChanged;
+        _songPlayer.PlaybackStateChanged -= OnPlaybackStateChanged;
     }
 
     private void OnDataChanged(object? sender, EventArgs e) => Refresh();
+
+    /// <summary>
+    /// 播放状态变化可能来自后台线程（歌播完了），属性变更通知必须回 UI 线程发。
+    /// </summary>
+    private void OnPlaybackStateChanged(object? sender, EventArgs e) =>
+        Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(SongToggleText)));
 
     private void OnReminderChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -185,6 +202,7 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
 
         OnPropertyChanged(nameof(ReminderSummary));
         OnPropertyChanged(nameof(SongPathDisplay));
+        OnPropertyChanged(nameof(SongToggleText));
         OnPropertyChanged(nameof(SelectedSongDurationIndex));
     }
 
@@ -324,6 +342,15 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
         StatusMessage = "已恢复为插件自带的生日歌。";
     }
 
+    /// <summary>手动播放 / 停止生日歌。和托盘菜单那一条是同一个入口。</summary>
+    [RelayCommand]
+    private void ToggleSong()
+    {
+        _songPlayer.Toggle();
+        StatusMessage = _songPlayer.IsPlaying ? "正在播放生日歌…" : "已停止播放。";
+        OnPropertyChanged(nameof(SongToggleText));
+    }
+
     [RelayCommand]
     private void Reload()
     {
@@ -351,6 +378,7 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
         OnPropertyChanged(nameof(LastImportTimeText));
         OnPropertyChanged(nameof(ReminderSummary));
         OnPropertyChanged(nameof(SongPathDisplay));
+        OnPropertyChanged(nameof(SongToggleText));
         OnPropertyChanged(nameof(SelectedSongDurationIndex));
     }
 

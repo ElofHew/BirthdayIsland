@@ -54,12 +54,16 @@
                         <!-- 提醒时刻 -->
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="提醒时间" VerticalAlignment="Center" Width="72" />
-                            <NumericUpDown Width="90" Minimum="0" Maximum="23" Increment="1"
+                            <NumericUpDown Minimum="0" Maximum="23" Increment="1"
                                            FormatString="00"
+                                           Width="140"
+                                           HorizontalContentAlignment="Left"
                                            Value="{Binding Reminder.Hour}" />
                             <TextBlock Text=":" VerticalAlignment="Center" />
-                            <NumericUpDown Width="90" Minimum="0" Maximum="59" Increment="1"
+                            <NumericUpDown Minimum="0" Maximum="59" Increment="1"
                                            FormatString="00"
+                                           Width="140"
+                                           HorizontalContentAlignment="Left"
                                            Value="{Binding Reminder.Minute}" />
                             <TextBlock Text="（时 / 分）" VerticalAlignment="Center" Opacity="0.6" />
                         </StackPanel>
@@ -101,6 +105,19 @@
                                 <Button Content="恢复默认" Command="{Binding ResetSongCommand}" />
                             </StackPanel>
                         </StackPanel>
+                    </StackPanel>
+
+                    <Separator Margin="0,4" />
+
+                    <!-- 手动播放/停止：和托盘菜单「更多选项」里那条是同一个开关。
+                         刻意放在两个 IsEnabled 之外 —— 提醒没开、或没勾「提醒时播放」时也要能试听。 -->
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="手动控制" VerticalAlignment="Center" Width="72" />
+                        <Button Content="{Binding SongToggleText}"
+                                Command="{Binding ToggleSongCommand}"
+                                Width="120" />
+                        <TextBlock Text="（也可以在托盘菜单「更多选项」里操作）"
+                                   VerticalAlignment="Center" Opacity="0.6" />
                     </StackPanel>
                 </StackPanel>
             </Border>

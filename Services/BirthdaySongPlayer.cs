@@ -21,15 +21,27 @@ public class BirthdaySongPlayer
     public const string BundledSongFileName = "BirthdaySong.mp3";
 
     private readonly IAudioService _audioService;
+    private readonly BirthdayDataService _dataService;
     private readonly ILogger<BirthdaySongPlayer> _logger;
 
     private CancellationTokenSource? _current;
 
-    public BirthdaySongPlayer(IAudioService audioService, ILogger<BirthdaySongPlayer> logger)
+    /// <summary>当前正在播放的文件，用来判断「同一首歌正在放」。</summary>
+    private string? _currentPath;
+
+    public BirthdaySongPlayer(IAudioService audioService, BirthdayDataService dataService,
+        ILogger<BirthdaySongPlayer> logger)
     {
         _audioService = audioService;
+        _dataService = dataService;
         _logger = logger;
     }
+
+    /// <summary>当前是否正在播放。托盘菜单和设置页的按钮都靠它决定显示「播放」还是「停止」。</summary>
+    public bool IsPlaying { get; private set; }
+
+    /// <summary>播放状态变化。可能来自后台线程（播放自然结束），订阅方自行切到 UI 线程。</summary>
+    public event EventHandler? PlaybackStateChanged;
 
     /// <summary>
     /// 插件自带的生日歌的完整路径。
@@ -70,9 +82,16 @@ public class BirthdaySongPlayer
     /// <param name="seconds">播放秒数；0 或负数表示完整播放。</param>
     public void Play(string path, int seconds)
     {
+        string resolved = ResolveSongPath(path);
+
+        // 同一首正在播就不打断。
+        // 自动化的「播放生日歌」行动和插件自己的「提醒时播放」很容易撞在一起
+        // （挂在「生日提醒触发时」的工作流就是这种），不挡一下会听到歌从头再来一遍。
+        if (IsPlaying && string.Equals(_currentPath, resolved, StringComparison.OrdinalIgnoreCase))
+            return;
+
         Stop();
 
-        string resolved = ResolveSongPath(path);
         if (!File.Exists(resolved))
         {
             _logger.LogWarning("生日歌文件不存在，跳过播放：{Path}", resolved);
@@ -81,6 +100,8 @@ public class BirthdaySongPlayer
 
         var cts = new CancellationTokenSource();
         _current = cts;
+        _currentPath = resolved;
+        SetPlaying(true);
 
         // CancelAfter 到点后，宿主那边的 PlayAudioAsync 会从 Wait 里退出并释放播放器，
         // 音频随之停止 —— 这是唯一能「播一半掐掉」的办法。
@@ -103,11 +124,36 @@ public class BirthdaySongPlayer
             }
             finally
             {
+                // 只有自己还是「当前那一次播放」时才回收状态，避免旧的播放任务把新的播放状态顶掉。
                 if (ReferenceEquals(_current, cts))
+                {
                     _current = null;
+                    _currentPath = null;
+                    SetPlaying(false);
+                }
+
                 cts.Dispose();
             }
         });
+    }
+
+    /// <summary>按插件设置里的路径和时长播一遍（空路径 = 插件自带那首）。</summary>
+    public void PlayFromConfig()
+    {
+        var reminder = _dataService.Config.Reminder;
+        Play(reminder.SongPath, reminder.SongDurationSeconds);
+    }
+
+    /// <summary>没在播就播，在播就停。托盘菜单和设置页那个按钮都走这里。</summary>
+    public void Toggle()
+    {
+        if (IsPlaying)
+        {
+            Stop();
+            return;
+        }
+
+        PlayFromConfig();
     }
 
     /// <summary>停止当前播放（如果有）。</summary>
@@ -115,7 +161,11 @@ public class BirthdaySongPlayer
     {
         var current = _current;
         if (current == null)
+        {
+            // 没有播放任务在跑，但状态可能因为异常残留，顺手归零。
+            SetPlaying(false);
             return;
+        }
 
         try
         {
@@ -125,5 +175,18 @@ public class BirthdaySongPlayer
         {
             // 已经播完并释放了
         }
+
+        // 不等后台任务收尾就把状态改掉：用户点了「停止」，界面应当立刻变成「播放」。
+        _currentPath = null;
+        SetPlaying(false);
+    }
+
+    private void SetPlaying(bool playing)
+    {
+        if (IsPlaying == playing)
+            return;
+
+        IsPlaying = playing;
+        PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
     }
 }
