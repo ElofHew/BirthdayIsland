@@ -388,8 +388,15 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
     [RelayCommand]
     private void ToggleSong()
     {
-        _songPlayer.Toggle();
-        StatusMessage = _songPlayer.IsPlaying ? "正在播放生日歌…" : "已停止播放。";
+        bool wasPlaying = _songPlayer.IsPlaying;
+        bool isPlaying = _songPlayer.Toggle();
+
+        StatusMessage = isPlaying
+            ? "正在播放生日歌…"
+            : wasPlaying
+                ? "已停止播放。"
+                : "没能开始播放，检查一下「音乐文件」路径是否存在。";
+
         OnPropertyChanged(nameof(SongToggleText));
     }
 

@@ -80,7 +80,8 @@ public class BirthdaySongPlayer
     /// </summary>
     /// <param name="path">音频文件路径；空则使用插件自带的生日歌。</param>
     /// <param name="seconds">播放秒数；0 或负数表示完整播放。</param>
-    public void Play(string path, int seconds)
+    /// <returns>是否真的开始播放了。找不到文件或已在播放同一首时返回 false，供界面提示用。</returns>
+    public bool Play(string path, int seconds)
     {
         string resolved = ResolveSongPath(path);
 
@@ -88,14 +89,14 @@ public class BirthdaySongPlayer
         // 自动化的「播放生日歌」行动和插件自己的「提醒时播放」很容易撞在一起
         // （挂在「生日提醒触发时」的工作流就是这种），不挡一下会听到歌从头再来一遍。
         if (IsPlaying && string.Equals(_currentPath, resolved, StringComparison.OrdinalIgnoreCase))
-            return;
+            return false;
 
         Stop();
 
         if (!File.Exists(resolved))
         {
             _logger.LogWarning("生日歌文件不存在，跳过播放：{Path}", resolved);
-            return;
+            return false;
         }
 
         var cts = new CancellationTokenSource();
@@ -135,25 +136,29 @@ public class BirthdaySongPlayer
                 cts.Dispose();
             }
         });
+
+        return true;
     }
 
-    /// <summary>按插件设置里的路径和时长播一遍（空路径 = 插件自带那首）。</summary>
-    public void PlayFromConfig()
+    /// <summary>按插件设置里的路径和时长播一遍（空路径 = 插件自带那首）。返回是否开始播放。</summary>
+    public bool PlayFromConfig()
     {
         var reminder = _dataService.Config.Reminder;
-        Play(reminder.SongPath, reminder.SongDurationSeconds);
+        return Play(reminder.SongPath, reminder.SongDurationSeconds);
     }
 
     /// <summary>没在播就播，在播就停。托盘菜单和设置页那个按钮都走这里。</summary>
-    public void Toggle()
+    /// <returns>操作之后是否处于播放中。</returns>
+    public bool Toggle()
     {
         if (IsPlaying)
         {
             Stop();
-            return;
+            return false;
         }
 
         PlayFromConfig();
+        return IsPlaying;
     }
 
     /// <summary>停止当前播放（如果有）。</summary>

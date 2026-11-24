@@ -122,11 +122,14 @@ public class BirthdayNotificationProvider : NotificationProviderBase
 
         var names = _dataService.GetTodayBirthdays(now).Select(p => p.Name).ToList();
 
+        // 没人过生日就不记账。记账是为了防重复，而「今天没人过生日」之后随时可能变成「有」——
+        // 用户先开提醒再导入名单时，若这里已经记了「今天已提醒」，当天的提醒就永远发不出来了。
+        // 窗口内每 20 秒重算一次的成本可以忽略（名单就几百条）。
+        if (names.Count == 0)
+            return;
+
         // 先记账再发送：万一后面发提醒或播歌抛异常，也不会在下一个 tick 里重复触发。
         _dataService.MarkReminderFired(now);
-
-        if (names.Count == 0)
-            return; // 今天没人过生日，静默跳过
 
         Announce(names, reminder);
     }
@@ -141,14 +144,26 @@ public class BirthdayNotificationProvider : NotificationProviderBase
     /// </remarks>
     public void AnnounceNow()
     {
+        // 自动化行动可能在后台线程跑，而 ShowNotification 和 MarkReminderFired 都会碰
+        // UI 绑定的集合（提醒队列、ObservableCollection），统一回 UI 线程再做。
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(AnnounceNow);
+            return;
+        }
+
         var now = _exactTimeService.GetCurrentLocalDateTime();
         var reminder = _dataService.Config.Reminder;
         var names = _dataService.GetTodayBirthdays(now).Select(p => p.Name).ToList();
 
-        _dataService.MarkReminderFired(now);
-
+        // 同上：没人过生日就不占用今天的额度。
         if (names.Count == 0)
+        {
+            _logger.LogInformation("今天没人过生日，跳过这次手动提醒");
             return;
+        }
+
+        _dataService.MarkReminderFired(now);
 
         Announce(names, reminder);
     }
