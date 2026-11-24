@@ -12,7 +12,7 @@
 
             <!-- 操作按钮 -->
             <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Content="导入 Excel" Command="{Binding ImportExcelCommand}" />
+                <Button Content="导入表格" Command="{Binding ImportExcelCommand}" />
                 <Button Content="清空数据" Command="{Binding ClearCommand}" />
                 <Button Content="刷新" Command="{Binding ReloadCommand}" />
             </StackPanel>
@@ -35,9 +35,24 @@
                 </StackPanel>
             </Border>
 
+            <!-- 闰日处理 -->
+            <StackPanel Spacing="4">
+                <TextBlock Text="闰日（2 月 29 日）在非闰年怎么显示" FontWeight="SemiBold" />
+                <ComboBox Width="300"
+                          HorizontalAlignment="Left"
+                          ItemsSource="{Binding LeapDayOptions}"
+                          SelectedItem="{Binding SelectedLeapDayOption}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:LeapDayOption">
+                            <TextBlock Text="{Binding Label}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </StackPanel>
+
             <!-- 导入错误列表 -->
             <StackPanel Spacing="4"
-                        IsVisible="{Binding ImportErrors.Count}">
+                        IsVisible="{Binding HasImportErrors}">
                 <TextBlock Text="导入失败明细" FontWeight="SemiBold" Foreground="OrangeRed" />
                 <ItemsControl ItemsSource="{Binding ImportErrors}">
                     <ItemsControl.ItemTemplate>

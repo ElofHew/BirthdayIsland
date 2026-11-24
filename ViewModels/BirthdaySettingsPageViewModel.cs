@@ -11,6 +11,9 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace BirthdayIsland.ViewModels;
 
+/// <summary>闰日显示规则的一个可选项，供设置页下拉框直接绑定。</summary>
+public sealed record LeapDayOption(LeapDayDisplayMode Value, string Label);
+
 public partial class BirthdaySettingsPageViewModel : ObservableObject
 {
     private readonly BirthdayDataService _dataService;
@@ -30,10 +33,35 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
 
     public int TodayBirthdayCount => TodayBirthdays.Count;
 
-    public string? LastImportFileName => _dataService.LastImportFileName;
+    public string LastImportFileName => _dataService.LastImportFileName ?? "（尚未导入）";
 
     public string LastImportTimeText =>
         _dataService.LastImportTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "（尚未导入）";
+
+    /// <summary>闰日规则的三个选项，顺序即下拉框顺序。</summary>
+    public IReadOnlyList<LeapDayOption> LeapDayOptions { get; } = new[]
+    {
+        new LeapDayOption(LeapDayDisplayMode.OnlyOnFeb29, "只在 2 月 29 日显示"),
+        new LeapDayOption(LeapDayDisplayMode.ShowOnFeb28WhenNonLeapYear, "非闰年提前到 2 月 28 日"),
+        new LeapDayOption(LeapDayDisplayMode.ShowOnMar1WhenNonLeapYear, "非闰年顺延到 3 月 1 日")
+    };
+
+    [ObservableProperty]
+    private LeapDayOption? _selectedLeapDayOption;
+
+    /// <summary>
+    /// 选中项回写到配置。Save() 会触发 DataChanged，而 Refresh() 又按配置重新赋值选中项，
+    /// 两边都靠「值没变就 return」收口，否则会来回触发。
+    /// </summary>
+    partial void OnSelectedLeapDayOptionChanged(LeapDayOption? value)
+    {
+        if (value == null)
+            return;
+        if (_dataService.Config.LeapDayDisplayMode == value.Value)
+            return;
+
+        _dataService.SetLeapDayDisplayMode(value.Value);
+    }
 
     [ObservableProperty]
     private string _statusMessage = string.Empty;
@@ -41,16 +69,35 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
     [ObservableProperty]
     private ObservableCollection<string> _importErrors = new();
 
+    /// <summary>「导入失败明细」那一块的可见性。XAML 里不能直接拿 Count(int) 当 bool 用。</summary>
+    public bool HasImportErrors => ImportErrors.Count > 0;
+
+    partial void OnImportErrorsChanged(ObservableCollection<string> value) =>
+        OnPropertyChanged(nameof(HasImportErrors));
+
     public BirthdaySettingsPageViewModel(
         BirthdayDataService dataService,
         ExcelImportService excelImportService)
     {
         _dataService = dataService;
         _excelImportService = excelImportService;
+    }
 
-        _dataService.DataChanged += (_, _) => Refresh();
+    /// <summary>
+    /// 设置页显示时调用。本 VM 是 Transient，如果在构造函数里订阅单例的 DataChanged，
+    /// 每开一次设置页就多挂一个永不释放的处理器，所以订阅/退订跟着页面的 Loaded/Unloaded 走。
+    /// 先 - 再 + 是为了让重复触发的 Loaded 只挂一份。
+    /// </summary>
+    public void Attach()
+    {
+        _dataService.DataChanged -= OnDataChanged;
+        _dataService.DataChanged += OnDataChanged;
         Refresh();
     }
+
+    public void Detach() => _dataService.DataChanged -= OnDataChanged;
+
+    private void OnDataChanged(object? sender, EventArgs e) => Refresh();
 
     [RelayCommand]
     private async Task ImportExcelAsync()
@@ -130,6 +177,11 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
         TodayBirthdays.Clear();
         foreach (var person in _dataService.GetTodayBirthdays())
             TodayBirthdays.Add(person);
+
+        // 配置可能被别处改过，选中项跟着配置走一遍。
+        SelectedLeapDayOption =
+            LeapDayOptions.FirstOrDefault(o => o.Value == _dataService.Config.LeapDayDisplayMode)
+            ?? LeapDayOptions[0];
 
         OnPropertyChanged(nameof(TotalCount));
         OnPropertyChanged(nameof(TodayBirthdayCount));

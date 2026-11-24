@@ -31,6 +31,11 @@ public partial class BirthdaySettingsPage : SettingsPageBase
         // 注入文件选择器与确认对话框（需要 TopLevel，故在加载后再注入）。
         _viewModel.PickFilesAsync = PickFilesAsync;
         _viewModel.ConfirmAsync = ConfirmAsync;
+
+        // 数据订阅跟页面的显隐成对：VM 是 Transient，挂在构造函数里会泄漏，
+        // 见 BirthdaySettingsPageViewModel.Attach 的注释。
+        Loaded += (_, _) => _viewModel.Attach();
+        Unloaded += (_, _) => _viewModel.Detach();
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
@@ -43,13 +48,15 @@ public partial class BirthdaySettingsPage : SettingsPageBase
 
         return await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "选择生日 Excel 文件",
+            Title = "选择生日表格文件",
             AllowMultiple = false,
+            // 只放行 xlsx 与 csv：老的 .xls 是二进制格式，ClosedXML 打不开，
+            // 放进筛选器只会让人选中之后看到「文件格式错误」。
             FileTypeFilter = new[]
             {
-                new FilePickerFileType("Excel 工作簿")
+                new FilePickerFileType("表格文件（.xlsx / .csv）")
                 {
-                    Patterns = new[] { "*.xlsx", "*.xls" }
+                    Patterns = new[] { "*.xlsx", "*.csv" }
                 }
             }
         });

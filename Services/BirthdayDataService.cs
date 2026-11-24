@@ -59,6 +59,10 @@ public class BirthdayDataService
     public void Clear()
     {
         People.Clear();
+        // 「上次导入」是跟着这批数据走的，数据清空了却还留着文件名，
+        // 设置页就会显示「总人数 0 / 上次导入 xxx.xlsx」，看着像没清干净。
+        Config.LastImportTime = null;
+        Config.LastImportFileName = null;
         Save();
     }
 
