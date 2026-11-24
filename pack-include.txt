@@ -1,0 +1,26 @@
+# 除了插件自己的 dll 之外，还要打进 .cipx 的文件（从 bin 目录取，每行一个）。
+#
+# 这里全是 ClosedXML 拉进来的第三方依赖，宿主没有，必须随插件走。
+# ClosedXML 负责解析 .xlsx（OpenXML），所以它身后还跟着 DocumentFormat.OpenXml 那一串：
+#
+#   ClosedXML.dll                 主库
+#   ClosedXML.Parser.dll          公式解析
+#   DocumentFormat.OpenXml.dll    OOXML 读写
+#   DocumentFormat.OpenXml.Framework.dll
+#   ExcelNumberFormat.dll         单元格格式解析
+#   RBush.dll                     ClosedXML 内部的空间索引
+#   SixLabors.Fonts.dll           度量字体宽度（列宽计算）
+#   System.IO.Packaging.dll       OPC 包（zip 容器）
+#   CommunityToolkit.Mvvm.dll     ObservableObject / RelayCommand 源生成器
+#
+# 升级 ClosedXML 后要先看一眼 bin 目录有没有新增 dll —— 漏一个就是运行时
+# 「Could not load file or assembly」，而且只有真去导入表格才会炸。
+ClosedXML.dll
+ClosedXML.Parser.dll
+CommunityToolkit.Mvvm.dll
+DocumentFormat.OpenXml.dll
+DocumentFormat.OpenXml.Framework.dll
+ExcelNumberFormat.dll
+RBush.dll
+SixLabors.Fonts.dll
+System.IO.Packaging.dll

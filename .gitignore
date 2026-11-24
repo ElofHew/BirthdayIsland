@@ -361,3 +361,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# 插件打包产物：build.ps1 每次都会重建，不该进版本库
+cipx/
+*.cipx
