@@ -1,7 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Avalonia.Platform.Storage;
 using BirthdayIsland.Models;
@@ -16,6 +19,9 @@ public sealed record LeapDayOption(LeapDayDisplayMode Value, string Label);
 
 public partial class BirthdaySettingsPageViewModel : ObservableObject
 {
+    /// <summary>生日歌播放时长下拉框的取值，和 <see cref="SongDurationLabels"/> 一一对应；0 表示完整播放。</summary>
+    private static readonly int[] SongDurationValues = { 30, 45, 60, 75, 0 };
+
     private readonly BirthdayDataService _dataService;
     private readonly ExcelImportService _excelImportService;
 
@@ -25,13 +31,46 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
     /// <summary>由设置页在加载后注入，用于弹出确认对话框。返回 true 表示确认。</summary>
     public Func<string, string, Task<bool>>? ConfirmAsync { get; set; }
 
+    /// <summary>由设置页在加载后注入，用于选择生日歌文件。返回 null 表示取消。</summary>
+    public Func<Task<string?>>? PickSongFileAsync { get; set; }
+
+    /// <summary>由设置页在加载后注入，用于选择导出目标文件。参数是建议文件名，返回 null 表示取消。</summary>
+    public Func<string, Task<string?>>? PickExportPathAsync { get; set; }
+
+    /// <summary>由设置页在加载后注入，用于弹出编辑对话框。返回 null 表示取消。</summary>
+    public Func<BirthdayPerson, Task<BirthdayPerson?>>? ShowEditDialogAsync { get; set; }
+
+    /// <summary>全部数据（导入、删除直接作用在这上面）。</summary>
     public ObservableCollection<BirthdayPerson> People => _dataService.People;
 
+    /// <summary>按搜索框过滤后的列表，界面绑这个。</summary>
+    public ObservableCollection<BirthdayPerson> VisiblePeople { get; } = new();
+
     public ObservableCollection<BirthdayPerson> TodayBirthdays { get; } = new();
+
+    public BirthdayReminderConfig Reminder => _dataService.Config.Reminder;
+
+    public IReadOnlyList<int> NotificationDurationOptions { get; } = new[] { 3, 5, 10 };
+
+    public IReadOnlyList<int> MaskDurationOptions { get; } = new[] { 1, 2, 3 };
+
+    public IReadOnlyList<string> SongDurationLabels { get; } = new[] { "30 秒", "45 秒", "60 秒", "75 秒", "完整播放" };
 
     public int TotalCount => People.Count;
 
     public int TodayBirthdayCount => TodayBirthdays.Count;
+
+    public bool HasTodayBirthdays => TodayBirthdays.Count > 0;
+
+    public bool HasVisiblePeople => VisiblePeople.Count > 0;
+
+    public string VisibleCountText => SearchText.Trim().Length == 0
+        ? $"共 {People.Count} 人"
+        : $"筛选出 {VisiblePeople.Count} / {People.Count} 人";
+
+    public string ReminderSummary => Reminder.IsEnabled
+        ? $"每天 {Reminder.Hour:00}:{Reminder.Minute:00} 提醒"
+        : "定时提醒未启用";
 
     public string LastImportFileName => _dataService.LastImportFileName ?? "（尚未导入）";
 
@@ -64,6 +103,11 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
     }
 
     [ObservableProperty]
+    private string _searchText = string.Empty;
+
+    partial void OnSearchTextChanged(string value) => RebuildVisiblePeople();
+
+    [ObservableProperty]
     private string _statusMessage = string.Empty;
 
     [ObservableProperty]
@@ -74,6 +118,26 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
 
     partial void OnImportErrorsChanged(ObservableCollection<string> value) =>
         OnPropertyChanged(nameof(HasImportErrors));
+
+    /// <summary>生日歌播放时长：下拉框用下标，配置里存秒数（0 = 完整播放）。</summary>
+    public int SelectedSongDurationIndex
+    {
+        get
+        {
+            int index = Array.IndexOf(SongDurationValues, Reminder.SongDurationSeconds);
+            return index < 0 ? 0 : index;
+        }
+        set
+        {
+            if (value < 0 || value >= SongDurationValues.Length)
+                return;
+            if (Reminder.SongDurationSeconds == SongDurationValues[value])
+                return;
+
+            Reminder.SongDurationSeconds = SongDurationValues[value];
+            OnPropertyChanged();
+        }
+    }
 
     public BirthdaySettingsPageViewModel(
         BirthdayDataService dataService,
@@ -92,12 +156,31 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
     {
         _dataService.DataChanged -= OnDataChanged;
         _dataService.DataChanged += OnDataChanged;
+
+        Reminder.PropertyChanged -= OnReminderChanged;
+        Reminder.PropertyChanged += OnReminderChanged;
+
         Refresh();
     }
 
-    public void Detach() => _dataService.DataChanged -= OnDataChanged;
+    public void Detach()
+    {
+        _dataService.DataChanged -= OnDataChanged;
+        Reminder.PropertyChanged -= OnReminderChanged;
+    }
 
     private void OnDataChanged(object? sender, EventArgs e) => Refresh();
+
+    private void OnReminderChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // LastFiredDate 是提醒服务内部的记账，MarkReminderFired 自己会存盘，
+        // 这里再存一次纯属重复写文件。
+        if (e.PropertyName != nameof(BirthdayReminderConfig.LastFiredDate))
+            _dataService.Save();
+
+        OnPropertyChanged(nameof(ReminderSummary));
+        OnPropertyChanged(nameof(SelectedSongDurationIndex));
+    }
 
     [RelayCommand]
     private async Task ImportExcelAsync()
@@ -166,6 +249,65 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task EditPersonAsync(BirthdayPerson? person)
+    {
+        if (person == null || ShowEditDialogAsync == null)
+            return;
+
+        var edited = await ShowEditDialogAsync(person);
+        if (edited == null)
+            return; // 用户取消
+
+        _dataService.ReplacePerson(person, edited);
+        StatusMessage = $"已更新：{edited.Name}";
+    }
+
+    [RelayCommand]
+    private async Task ExportCsvAsync()
+    {
+        if (PickExportPathAsync == null)
+        {
+            StatusMessage = "无法打开保存对话框。";
+            return;
+        }
+
+        if (People.Count == 0)
+        {
+            StatusMessage = "没有可导出的数据。";
+            return;
+        }
+
+        string? path = await PickExportPathAsync($"生日名单-{DateTime.Now:yyyyMMdd}.csv");
+        if (string.IsNullOrWhiteSpace(path))
+            return; // 用户取消
+
+        try
+        {
+            // 必须 UTF-8 带 BOM：不带 BOM 时 Excel 会按本地 ANSI 打开，中文姓名全变乱码。
+            await File.WriteAllTextAsync(path, BirthdayCsvWriter.Build(People), new UTF8Encoding(true));
+            StatusMessage = $"已导出 {People.Count} 条到 {Path.GetFileName(path)}。";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"导出失败：{ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task PickSongAsync()
+    {
+        if (PickSongFileAsync == null)
+            return;
+
+        string? path = await PickSongFileAsync();
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        Reminder.SongPath = path;
+        StatusMessage = $"生日歌已设为：{Path.GetFileName(path)}";
+    }
+
+    [RelayCommand]
     private void Reload()
     {
         _dataService.Load();
@@ -178,6 +320,8 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
         foreach (var person in _dataService.GetTodayBirthdays())
             TodayBirthdays.Add(person);
 
+        RebuildVisiblePeople();
+
         // 配置可能被别处改过，选中项跟着配置走一遍。
         SelectedLeapDayOption =
             LeapDayOptions.FirstOrDefault(o => o.Value == _dataService.Config.LeapDayDisplayMode)
@@ -185,7 +329,41 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
 
         OnPropertyChanged(nameof(TotalCount));
         OnPropertyChanged(nameof(TodayBirthdayCount));
+        OnPropertyChanged(nameof(HasTodayBirthdays));
         OnPropertyChanged(nameof(LastImportFileName));
         OnPropertyChanged(nameof(LastImportTimeText));
+        OnPropertyChanged(nameof(ReminderSummary));
+        OnPropertyChanged(nameof(SelectedSongDurationIndex));
+    }
+
+    private void RebuildVisiblePeople()
+    {
+        string keyword = SearchText.Trim();
+
+        VisiblePeople.Clear();
+        foreach (var person in People
+                     .Where(p => Matches(p, keyword))
+                     .OrderBy(p => p.Birthday.Month)
+                     .ThenBy(p => p.Birthday.Day)
+                     .ThenBy(p => p.Name, StringComparer.CurrentCulture))
+        {
+            VisiblePeople.Add(person);
+        }
+
+        OnPropertyChanged(nameof(VisibleCountText));
+        OnPropertyChanged(nameof(HasVisiblePeople));
+    }
+
+    private static bool Matches(BirthdayPerson person, string keyword)
+    {
+        if (keyword.Length == 0)
+            return true;
+
+        return Contains(person.Name, keyword)
+               || Contains(person.ClassName, keyword)
+               || Contains(person.Remark, keyword);
+
+        static bool Contains(string? value, string keyword) =>
+            value != null && value.Contains(keyword, StringComparison.CurrentCultureIgnoreCase);
     }
 }

@@ -13,6 +13,7 @@
             <!-- 操作按钮 -->
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button Content="导入表格" Command="{Binding ImportExcelCommand}" />
+                <Button Content="导出 CSV" Command="{Binding ExportCsvCommand}" />
                 <Button Content="清空数据" Command="{Binding ClearCommand}" />
                 <Button Content="刷新" Command="{Binding ReloadCommand}" />
             </StackPanel>
@@ -32,6 +33,74 @@
                     <TextBlock Text="{Binding TodayBirthdayCount, StringFormat='今日生日人数：{0}'}" />
                     <TextBlock Text="{Binding LastImportFileName, StringFormat='上次导入文件：{0}'}" />
                     <TextBlock Text="{Binding LastImportTimeText, StringFormat='上次导入时间：{0}'}" />
+                </StackPanel>
+            </Border>
+
+            <!-- 定时提醒 -->
+            <Border BorderThickness="1" CornerRadius="6" Padding="12"
+                    BorderBrush="{DynamicResource ControlElevationBorderBrush}">
+                <StackPanel Spacing="10">
+                    <DockPanel>
+                        <TextBlock Text="定时提醒" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding ReminderSummary}" Opacity="0.7"
+                                   HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </DockPanel>
+
+                    <ToggleSwitch Content="每天在指定时间发送生日提醒"
+                                  IsChecked="{Binding Reminder.IsEnabled}" />
+
+                    <StackPanel Spacing="6" IsEnabled="{Binding Reminder.IsEnabled}">
+
+                        <!-- 提醒时刻 -->
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="提醒时间" VerticalAlignment="Center" Width="72" />
+                            <NumericUpDown Width="90" Minimum="0" Maximum="23" Increment="1"
+                                           FormatString="00"
+                                           Value="{Binding Reminder.Hour}" />
+                            <TextBlock Text=":" VerticalAlignment="Center" />
+                            <NumericUpDown Width="90" Minimum="0" Maximum="59" Increment="1"
+                                           FormatString="00"
+                                           Value="{Binding Reminder.Minute}" />
+                            <TextBlock Text="（时 / 分）" VerticalAlignment="Center" Opacity="0.6" />
+                        </StackPanel>
+
+                        <!-- 时长 -->
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="正文时长" VerticalAlignment="Center" Width="72" />
+                            <ComboBox Width="120"
+                                      ItemsSource="{Binding NotificationDurationOptions}"
+                                      SelectedItem="{Binding Reminder.NotificationDurationSeconds}" />
+                            <TextBlock Text="秒" VerticalAlignment="Center" Opacity="0.6" />
+
+                            <TextBlock Text="遮罩时长" VerticalAlignment="Center" Width="72" Margin="16,0,0,0" />
+                            <ComboBox Width="120"
+                                      ItemsSource="{Binding MaskDurationOptions}"
+                                      SelectedItem="{Binding Reminder.MaskDurationSeconds}" />
+                            <TextBlock Text="秒" VerticalAlignment="Center" Opacity="0.6" />
+                        </StackPanel>
+
+                        <Separator Margin="0,4" />
+
+                        <!-- 生日歌 -->
+                        <ToggleSwitch Content="提醒时播放生日歌"
+                                      IsEnabled="{Binding Reminder.IsEnabled}"
+                                      IsChecked="{Binding Reminder.IsSongEnabled}" />
+
+                        <StackPanel Spacing="6" IsEnabled="{Binding Reminder.IsSongEnabled}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="播放时长" VerticalAlignment="Center" Width="72" />
+                                <ComboBox Width="140"
+                                          ItemsSource="{Binding SongDurationLabels}"
+                                          SelectedIndex="{Binding SelectedSongDurationIndex}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="音乐文件" VerticalAlignment="Center" Width="72" />
+                                <TextBox Text="{Binding Reminder.SongPath}" IsReadOnly="True"
+                                         Width="380" VerticalAlignment="Center" />
+                                <Button Content="选择…" Command="{Binding PickSongCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
                 </StackPanel>
             </Border>
 
@@ -66,6 +135,8 @@
             <!-- 今日生日 -->
             <StackPanel Spacing="4">
                 <TextBlock Text="今日生日" FontWeight="SemiBold" />
+                <TextBlock Text="今天没有同学过生日。" Opacity="0.6"
+                           IsVisible="{Binding !HasTodayBirthdays}" />
                 <ItemsControl ItemsSource="{Binding TodayBirthdays}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="models:BirthdayPerson">
@@ -78,31 +149,58 @@
                 </ItemsControl>
             </StackPanel>
 
-            <!-- 全部生日数据 -->
-            <StackPanel Spacing="4">
-                <TextBlock Text="全部生日数据" FontWeight="SemiBold" />
-                <Grid ColumnDefinitions="2*,2*,2*,Auto" Margin="0,0,0,4">
-                    <TextBlock Grid.Column="0" Text="姓名" FontWeight="SemiBold" />
-                    <TextBlock Grid.Column="1" Text="生日" FontWeight="SemiBold" />
-                    <TextBlock Grid.Column="2" Text="备注" FontWeight="SemiBold" />
-                    <TextBlock Grid.Column="3" Text="操作" FontWeight="SemiBold" />
-                </Grid>
-                <ItemsControl ItemsSource="{Binding People}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="models:BirthdayPerson">
-                            <Grid ColumnDefinitions="2*,2*,2*,Auto" Margin="0,2">
-                                <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="1" Text="{Binding Birthday, StringFormat='{}{0:MM-dd}'}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="2" Text="{Binding Remark}" VerticalAlignment="Center" />
-                                <Button Grid.Column="3"
-                                        Content="删除"
-                                        Command="{Binding $parent[ItemsControl].((vm:BirthdaySettingsPageViewModel)DataContext).DeletePersonCommand}"
-                                        CommandParameter="{Binding}" />
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </StackPanel>
+            <!-- 生日名单 -->
+            <Border BorderThickness="1" CornerRadius="6" Padding="12"
+                    BorderBrush="{DynamicResource ControlElevationBorderBrush}">
+                <StackPanel Spacing="8">
+                    <DockPanel>
+                        <TextBlock Text="生日名单" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding VisibleCountText}" Opacity="0.7"
+                                   Margin="12,0,0,0" VerticalAlignment="Center" />
+                        <Button Content="导出 CSV" HorizontalAlignment="Right"
+                                DockPanel.Dock="Right"
+                                Command="{Binding ExportCsvCommand}" />
+                    </DockPanel>
+
+                    <TextBox Watermark="搜索姓名 / 班级 / 备注"
+                             Text="{Binding SearchText}" />
+
+                    <!-- 固定高度 + 内部滚动：名单再长也不会把设置页撑成一条长龙 -->
+                    <ScrollViewer MaxHeight="320">
+                        <ItemsControl ItemsSource="{Binding VisiblePeople}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:BirthdayPerson">
+                                    <Grid ColumnDefinitions="2*,1.2*,2*,2*,Auto" Margin="0,3">
+                                        <TextBlock Grid.Column="0" Text="{Binding Name}"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Birthday, StringFormat='{}{0:MM-dd}'}"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2" Text="{Binding ClassName}"
+                                                   VerticalAlignment="Center" Opacity="0.8"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="3" Text="{Binding Remark}"
+                                                   VerticalAlignment="Center" Opacity="0.8"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
+                                            <Button Content="编辑" Padding="8,2"
+                                                    Command="{Binding $parent[ItemsControl].((vm:BirthdaySettingsPageViewModel)DataContext).EditPersonCommand}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Content="删除" Padding="8,2"
+                                                    Command="{Binding $parent[ItemsControl].((vm:BirthdaySettingsPageViewModel)DataContext).DeletePersonCommand}"
+                                                    CommandParameter="{Binding}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <TextBlock Text="名单为空。点上面的「导入表格」导入 .xlsx 或 .csv。"
+                               Opacity="0.6"
+                               IsVisible="{Binding !HasVisiblePeople}" />
+                </StackPanel>
+            </Border>
 
         </StackPanel>
     </ScrollViewer>
