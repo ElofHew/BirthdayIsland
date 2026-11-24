@@ -3,6 +3,7 @@ using ClassIsland.Core.Attributes;
 using ClassIsland.Core.Extensions.Registry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using BirthdayIsland.Automation;
 using BirthdayIsland.Services;
 using BirthdayIsland.ViewModels;
 using BirthdayIsland.Views.Components;
@@ -23,6 +24,17 @@ public class Plugin : PluginBase
         // 提醒提供方注册进来后会出现在「设置 → 提醒」里，可以单独调音效和特效。
         services.AddSingleton<BirthdaySongPlayer>();
         services.AddNotificationProvider<BirthdayNotificationProvider>();
+
+        // 托盘菜单「更多选项 → 播放生日歌 / 停止播放」。
+        // 生日歌是在后台响的，最小化之后只有托盘能停它。
+        services.AddHostedService<BirthdayTrayService>();
+
+        // 自动化：一个触发器（生日提醒触发时）+ 三个行动（发提醒 / 放歌 / 停歌）。
+        // 行动和触发器跟插件自己的定时提醒共用同一套服务，两边不会各放各的。
+        services.AddTrigger<BirthdayReminderTrigger>();
+        services.AddAction<BirthdayAnnounceAction>();
+        services.AddAction<BirthdaySongPlayAction>();
+        services.AddAction<BirthdaySongStopAction>();
 
         // 设置页 ViewModel
         services.AddTransient<BirthdaySettingsPageViewModel>();

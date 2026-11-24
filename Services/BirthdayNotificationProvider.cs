@@ -8,6 +8,9 @@ using ClassIsland.Core.Abstractions.Services;
 using ClassIsland.Core.Abstractions.Services.NotificationProviders;
 using ClassIsland.Core.Attributes;
 using ClassIsland.Core.Models.Notification;
+using ClassIsland.Shared;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace BirthdayIsland.Services;
@@ -45,6 +48,9 @@ public class BirthdayNotificationProvider : NotificationProviderBase
 
     /// <summary>0 = 空闲，1 = 已有一个检查在 UI 线程排队/执行中。</summary>
     private int _checkInFlight;
+
+    /// <summary>发出一次生日提醒后触发，供自动化触发器使用。</summary>
+    public event EventHandler<BirthdayAnnouncementEventArgs>? Announced;
 
     public BirthdayNotificationProvider(
         BirthdayDataService dataService,
@@ -103,7 +109,53 @@ public class BirthdayNotificationProvider : NotificationProviderBase
         if (names.Count == 0)
             return; // 今天没人过生日，静默跳过
 
+        Announce(names, reminder);
+    }
+
+    /// <summary>
+    /// 立即发出一次生日提醒（自动化行动或手动触发用）。
+    /// </summary>
+    /// <remarks>
+    /// 和定时提醒的区别只有一点：这里不看「今天是否已经发过」，用户显式要求就发。
+    /// 但发完仍然会记账 —— 于是「自动化里 8:00 发过一次」和「插件自带 8:00 提醒」
+    /// 不会在同一分钟各发一条（自带的那个会看到今天已发而跳过）。
+    /// </remarks>
+    public void AnnounceNow()
+    {
+        var now = _exactTimeService.GetCurrentLocalDateTime();
+        var reminder = _dataService.Config.Reminder;
+        var names = _dataService.GetTodayBirthdays(now).Select(p => p.Name).ToList();
+
+        _dataService.MarkReminderFired(now);
+
+        if (names.Count == 0)
+            return;
+
+        Announce(names, reminder);
+    }
+
+    /// <summary>
+    /// 取当前正在运行的提醒提供方实例。
+    /// </summary>
+    /// <remarks>
+    /// 本类型只以 <c>IHostedService</c> 的形式注册（<c>AddNotificationProvider</c> 内部就是这样加的），
+    /// 容器里没有「具体类型」这条注册，所以只能从宿主的托管服务列表里按类型捞。
+    /// 宿主自己的 NotificationAction 也是这么拿提供方实例的。
+    /// 这样取还能保证拿到的是同一个对象 —— 再注册一次单例就会多出一个实例，
+    /// 于是又多一个定时器、多一份提醒。
+    /// </remarks>
+    public static BirthdayNotificationProvider? TryGetCurrent() =>
+        IAppHost.Host?.Services.GetServices<IHostedService>()
+            .OfType<BirthdayNotificationProvider>()
+            .FirstOrDefault();
+
+    private void Announce(IReadOnlyList<string> names, BirthdayReminderConfig reminder)
+    {
         ShowBirthdayNotification(names, reminder);
+
+        // 先抛事件再播歌：自动化里挂在「生日提醒触发时」的工作流能立刻跑起来，
+        // 不必等音频结束。
+        Announced?.Invoke(this, new BirthdayAnnouncementEventArgs(names));
 
         if (reminder.IsSongEnabled)
             _songPlayer.Play(reminder.SongPath, reminder.SongDurationSeconds);
