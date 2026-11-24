@@ -4,6 +4,24 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace BirthdayIsland.Models;
 
 /// <summary>
+/// 定时提醒由谁驱动。
+/// </summary>
+public enum ReminderControlSource
+{
+    /// <summary>由插件自己的定时器在设定时刻触发（默认）。</summary>
+    PluginSettings,
+
+    /// <summary>
+    /// 插件不再按时间自动触发，改由 ClassIsland 自动化编排。
+    /// </summary>
+    /// <remarks>
+    /// 两套东西都能发提醒，同时开就会在同一分钟各发一条。这个开关的作用就是把其中一套关掉，
+    /// 而不是让代码去猜用户想用哪套。
+    /// </remarks>
+    Automation
+}
+
+/// <summary>
 /// 定时提醒设置。
 /// </summary>
 /// <remarks>
@@ -13,6 +31,12 @@ namespace BirthdayIsland.Models;
 /// </remarks>
 public partial class BirthdayReminderConfig : ObservableObject
 {
+    /// <summary>
+    /// 提醒由谁驱动。默认遵循插件设置。
+    /// </summary>
+    [ObservableProperty]
+    private ReminderControlSource _controlSource = ReminderControlSource.PluginSettings;
+
     /// <summary>是否启用定时提醒。</summary>
     [ObservableProperty]
     private bool _isEnabled;

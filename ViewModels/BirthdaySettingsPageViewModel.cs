@@ -73,9 +73,38 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
         ? $"共 {People.Count} 人"
         : $"筛选出 {VisiblePeople.Count} / {People.Count} 人";
 
-    public string ReminderSummary => Reminder.IsEnabled
-        ? $"每天 {Reminder.Hour:00}:{Reminder.Minute:00} 提醒"
-        : "定时提醒未启用";
+    public string ReminderSummary => Reminder.ControlSource == ReminderControlSource.Automation
+        ? "由 ClassIsland 自动化控制"
+        : Reminder.IsEnabled
+            ? $"每天 {Reminder.Hour:00}:{Reminder.Minute:00} 提醒"
+            : "定时提醒未启用";
+
+    /// <summary>提醒驱动方式的两个选项。</summary>
+    public IReadOnlyList<string> ReminderSourceLabels { get; } = new[] { "插件设置", "ClassIsland 自动化" };
+
+    /// <summary>提醒驱动方式：0 = 插件设置，1 = ClassIsland 自动化。</summary>
+    public int SelectedReminderSourceIndex
+    {
+        get => Reminder.ControlSource == ReminderControlSource.Automation ? 1 : 0;
+        set
+        {
+            var target = value == 1 ? ReminderControlSource.Automation : ReminderControlSource.PluginSettings;
+            if (Reminder.ControlSource == target)
+                return;
+
+            Reminder.ControlSource = target;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>是否由插件自己计时（决定时间与开关能不能改）。</summary>
+    public bool IsPluginControlled => Reminder.ControlSource == ReminderControlSource.PluginSettings;
+
+    /// <summary>是否交给自动化（设置页要显示对应提示）。</summary>
+    public bool IsAutomationControlled => !IsPluginControlled;
+
+    /// <summary>时间与「每天发送」开关只在插件计时 + 已启用时可改。</summary>
+    public bool IsTimeSettingsEnabled => IsPluginControlled && Reminder.IsEnabled;
 
     /// <summary>生日歌路径的展示文本。配置为空表示用插件包里自带的那首。</summary>
     public string SongPathDisplay => string.IsNullOrWhiteSpace(Reminder.SongPath)
@@ -188,6 +217,22 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
     private void OnDataChanged(object? sender, EventArgs e) => Refresh();
 
     /// <summary>
+    /// 提醒相关的派生显示属性一起通知。配置里任何一个字段变了都可能影响它们
+    /// （比如改时长会改下拉框选中项，改驱动方式会改整块的可用状态）。
+    /// </summary>
+    private void RaiseReminderDerived()
+    {
+        OnPropertyChanged(nameof(ReminderSummary));
+        OnPropertyChanged(nameof(SongPathDisplay));
+        OnPropertyChanged(nameof(SongToggleText));
+        OnPropertyChanged(nameof(SelectedSongDurationIndex));
+        OnPropertyChanged(nameof(SelectedReminderSourceIndex));
+        OnPropertyChanged(nameof(IsPluginControlled));
+        OnPropertyChanged(nameof(IsAutomationControlled));
+        OnPropertyChanged(nameof(IsTimeSettingsEnabled));
+    }
+
+    /// <summary>
     /// 播放状态变化可能来自后台线程（歌播完了），属性变更通知必须回 UI 线程发。
     /// </summary>
     private void OnPlaybackStateChanged(object? sender, EventArgs e) =>
@@ -200,10 +245,7 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
         if (e.PropertyName != nameof(BirthdayReminderConfig.LastFiredDate))
             _dataService.Save();
 
-        OnPropertyChanged(nameof(ReminderSummary));
-        OnPropertyChanged(nameof(SongPathDisplay));
-        OnPropertyChanged(nameof(SongToggleText));
-        OnPropertyChanged(nameof(SelectedSongDurationIndex));
+        RaiseReminderDerived();
     }
 
     [RelayCommand]
@@ -376,10 +418,7 @@ public partial class BirthdaySettingsPageViewModel : ObservableObject
         OnPropertyChanged(nameof(HasTodayBirthdays));
         OnPropertyChanged(nameof(LastImportFileName));
         OnPropertyChanged(nameof(LastImportTimeText));
-        OnPropertyChanged(nameof(ReminderSummary));
-        OnPropertyChanged(nameof(SongPathDisplay));
-        OnPropertyChanged(nameof(SongToggleText));
-        OnPropertyChanged(nameof(SelectedSongDurationIndex));
+        RaiseReminderDerived();
     }
 
     private void RebuildVisiblePeople()

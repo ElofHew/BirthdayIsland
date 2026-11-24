@@ -46,13 +46,27 @@
                                    HorizontalAlignment="Right" VerticalAlignment="Center" />
                     </DockPanel>
 
+                    <!-- 驱动方式：两条路都能发提醒，同时开就会同一分钟各发一条，所以让用户显式选一套 -->
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="提醒由谁控制" VerticalAlignment="Center" Width="96" />
+                        <ComboBox Width="200"
+                                  ItemsSource="{Binding ReminderSourceLabels}"
+                                  SelectedIndex="{Binding SelectedReminderSourceIndex}" />
+                    </StackPanel>
+
+                    <TextBlock Text="已交给 ClassIsland 自动化：插件不再按时间自动发提醒，请用「生日提醒触发时」「发送生日提醒」等自动化编排；下面的开关与时间不生效，时长和生日歌设置仍然有效。"
+                               Opacity="0.6" TextWrapping="Wrap"
+                               IsVisible="{Binding IsAutomationControlled}" />
+
                     <ToggleSwitch Content="每天在指定时间发送生日提醒"
+                                  IsEnabled="{Binding IsPluginControlled}"
                                   IsChecked="{Binding Reminder.IsEnabled}" />
 
-                    <StackPanel Spacing="6" IsEnabled="{Binding Reminder.IsEnabled}">
+                    <StackPanel Spacing="6">
 
-                        <!-- 提醒时刻 -->
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <!-- 提醒时刻：只在「插件设置」模式且已启用时有意义 -->
+                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                    IsEnabled="{Binding IsTimeSettingsEnabled}">
                             <TextBlock Text="提醒时间" VerticalAlignment="Center" Width="72" />
                             <NumericUpDown Minimum="0" Maximum="23" Increment="1"
                                            FormatString="00"
@@ -85,9 +99,9 @@
 
                         <Separator Margin="0,4" />
 
-                        <!-- 生日歌 -->
+                        <!-- 生日歌。这个开关同时管自动化行动里的「发送生日提醒」，
+                             所以不随「每天自动发送」一起置灰。 -->
                         <ToggleSwitch Content="提醒时播放生日歌"
-                                      IsEnabled="{Binding Reminder.IsEnabled}"
                                       IsChecked="{Binding Reminder.IsSongEnabled}" />
 
                         <StackPanel Spacing="6" IsEnabled="{Binding Reminder.IsSongEnabled}">
