@@ -25,7 +25,6 @@ public partial class BirthdayTodayComponent : ComponentBase<BirthdayComponentSet
     {
         InitializeComponent();
         _dataService = dataService;
-        _dataService.DataChanged += OnDataChanged;
 
         // Settings 要到 Loaded 之后才可用；加载完成后再订阅设置变更并刷新一次。
         Loaded += OnComponentLoaded;
@@ -34,8 +33,20 @@ public partial class BirthdayTodayComponent : ComponentBase<BirthdayComponentSet
 
     private void OnComponentLoaded(object? sender, RoutedEventArgs e)
     {
+        // DataChanged 必须在 Loaded 里订阅，不能放构造函数：
+        // 主界面切页时组件会被 Unloaded（下面退订了），只订不退会泄漏，
+        // 而在构造函数里订一次、Unloaded 退掉之后再切回来就再也没有订阅者了 ——
+        // 表现是「切走再切回，导入新数据组件不更新」。
+        // Loaded 可能重复触发，先 - 再 + 保证只挂一份。
+        _dataService.DataChanged -= OnDataChanged;
+        _dataService.DataChanged += OnDataChanged;
+
         if (Settings != null)
+        {
+            Settings.PropertyChanged -= OnSettingsChanged;
             Settings.PropertyChanged += OnSettingsChanged;
+        }
+
         UpdateDisplay();
     }
 
