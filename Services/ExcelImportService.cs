@@ -3,12 +3,18 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using BirthdayIsland.Models;
 using ClosedXML.Excel;
 
 namespace BirthdayIsland.Services;
 
+/// <summary>
+/// 生日表格导入。支持 .xlsx（ClosedXML）与 .csv（手写解析）。
+/// 两种格式共用同一套表头别名和日期解析，避免「Excel 能认、CSV 不认」这种漂移。
+/// 老的 .xls 是二进制格式，ClosedXML 读不了，所以在 Import 入口就明确拒绝。
+/// </summary>
 public class ExcelImportService
 {
     private const int DefaultYear = 2000;
@@ -27,14 +33,40 @@ public class ExcelImportService
 
     public BirthdayImportResult Import(string filePath)
     {
-        var result = new BirthdayImportResult();
-
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
         {
-            result.Fatal = true;
-            result.Message = "导入失败：文件不存在，请重新选择。";
-            return result;
+            return new BirthdayImportResult
+            {
+                Fatal = true,
+                Message = "导入失败：文件不存在，请重新选择。"
+            };
         }
+
+        string ext = Path.GetExtension(filePath).ToLowerInvariant();
+        return ext switch
+        {
+            ".csv" => ImportCsv(filePath),
+            ".xlsx" or ".xlsm" => ImportWorkbook(filePath),
+            ".xls" => new BirthdayImportResult
+            {
+                Fatal = true,
+                // 不自动处理 .xls：那是 BIFF 二进制格式，ClosedXML 只认 OpenXML，
+                // 让人回去另存一次比自己糊一个 BIFF 解析器靠谱得多。
+                Message = "导入失败：不支持旧版 .xls，请在 Excel 里「另存为」.xlsx 或 .csv 后重试。"
+            },
+            _ => new BirthdayImportResult
+            {
+                Fatal = true,
+                Message = "导入失败：只支持 .xlsx 或 .csv 文件。"
+            }
+        };
+    }
+
+    // ------------------------------------------------------------------ xlsx
+
+    private BirthdayImportResult ImportWorkbook(string filePath)
+    {
+        var result = new BirthdayImportResult();
 
         XLWorkbook workbook;
         try
@@ -82,14 +114,14 @@ public class ExcelImportService
             if (nameCol == 0)
             {
                 result.Fatal = true;
-                result.Message = "导入失败：未找到“姓名”列，请确认 Excel 第一行包含“姓名”或“Name”。";
+                result.Message = "导入失败：未找到“姓名”列，请确认表格第一行包含“姓名”或“Name”。";
                 return result;
             }
 
             if (birthdayCol == 0)
             {
                 result.Fatal = true;
-                result.Message = "导入失败：未找到“生日”列，请确认 Excel 第一行包含“生日”或“Birthday”。";
+                result.Message = "导入失败：未找到“生日”列，请确认表格第一行包含“生日”或“Birthday”。";
                 return result;
             }
 
@@ -132,34 +164,255 @@ public class ExcelImportService
             }
         }
 
-        if (result.SuccessCount == 0 && result.ErrorCount == 0)
-        {
-            result.Message = "导入完成：表格中没有有效数据。";
-        }
-        else
-        {
-            result.Message = $"导入完成：成功 {result.SuccessCount} 条，失败 {result.ErrorCount} 条。";
-        }
-
+        FillSummary(result);
         return result;
     }
+
+    // ------------------------------------------------------------------ csv
+
+    private BirthdayImportResult ImportCsv(string filePath)
+    {
+        var result = new BirthdayImportResult();
+
+        string text;
+        try
+        {
+            text = ReadCsvText(filePath);
+        }
+        catch (IOException)
+        {
+            result.Fatal = true;
+            result.Message = "导入失败：文件可能正在被其它程序占用，请关闭后重试。";
+            return result;
+        }
+        catch (Exception)
+        {
+            result.Fatal = true;
+            result.Message = "导入失败：无法读取文件，请确认是有效的文本文件。";
+            return result;
+        }
+
+        var rows = ParseCsvRows(text);
+
+        // 表头 = 第一行有内容的行。有些导出工具会在最前面留空行。
+        int headerIndex = rows.FindIndex(r => r.Any(f => !string.IsNullOrWhiteSpace(f)));
+        if (headerIndex < 0)
+        {
+            result.Fatal = true;
+            result.Message = "导入失败：文件里没有内容。";
+            return result;
+        }
+
+        var header = rows[headerIndex];
+        int nameCol = FindColumnIndex(header, NameHeaders);
+        int birthdayCol = FindColumnIndex(header, BirthdayHeaders);
+        int classCol = FindColumnIndex(header, ClassHeaders);
+        int remarkCol = FindColumnIndex(header, RemarkHeaders);
+
+        if (nameCol < 0)
+        {
+            result.Fatal = true;
+            result.Message = "导入失败：未找到“姓名”列，请确认表格第一行包含“姓名”或“Name”。";
+            return result;
+        }
+
+        if (birthdayCol < 0)
+        {
+            result.Fatal = true;
+            result.Message = "导入失败：未找到“生日”列，请确认表格第一行包含“生日”或“Birthday”。";
+            return result;
+        }
+
+        for (int i = headerIndex + 1; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            int rowNumber = i + 1;
+            string name = CellText(row, nameCol);
+
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            string rawBirthday = CellText(row, birthdayCol);
+
+            if (!TryParseBirthdayText(rawBirthday, out var birthday))
+            {
+                result.Errors.Add(new BirthdayImportError
+                {
+                    RowNumber = rowNumber,
+                    RawName = name,
+                    RawBirthday = rawBirthday,
+                    Reason = string.IsNullOrWhiteSpace(rawBirthday)
+                        ? "生日为空"
+                        : $"无法识别生日格式：{rawBirthday}"
+                });
+                continue;
+            }
+
+            result.People.Add(new BirthdayPerson
+            {
+                Name = name,
+                RawBirthday = rawBirthday,
+                Birthday = birthday,
+                ClassName = classCol >= 0 ? CellText(row, classCol) : null,
+                Remark = remarkCol >= 0 ? CellText(row, remarkCol) : null
+            });
+        }
+
+        FillSummary(result);
+        return result;
+    }
+
+    /// <summary>
+    /// 读 CSV 文本。编码按 BOM → 严格 UTF-8 → GB18030 的顺序试：
+    /// 中文 Windows 上 Excel「另存为 CSV」默认写 ANSI（GBK 系），没有 BOM 且不是合法 UTF-8，
+    /// 直接按 UTF-8 解会得到一片问号，用户只会看到「找不到姓名列」。
+    /// </summary>
+    private static string ReadCsvText(string path)
+    {
+        byte[] bytes = File.ReadAllBytes(path);
+
+        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+            return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
+
+        if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
+            return Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2);
+
+        if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
+            return Encoding.BigEndianUnicode.GetString(bytes, 2, bytes.Length - 2);
+
+        try
+        {
+            return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true)
+                .GetString(bytes);
+        }
+        catch (DecoderFallbackException)
+        {
+            // GB18030 是 GBK / GB2312 的超集，这一族编码都能解。
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            return Encoding.GetEncoding("GB18030").GetString(bytes);
+        }
+    }
+
+    /// <summary>
+    /// 按 RFC 4180 切行切列：双引号包裹的字段内允许逗号、换行；两个连续双引号表示一个双引号。
+    /// 只认逗号分隔（中文区域的 Excel 导出默认就是逗号），不猜分号或制表符。
+    /// </summary>
+    private static List<string[]> ParseCsvRows(string text)
+    {
+        var rows = new List<string[]>();
+        var fields = new List<string>();
+        var field = new StringBuilder();
+        bool inQuotes = false;
+
+        for (int i = 0; i < text.Length; i++)
+        {
+            char c = text[i];
+
+            if (inQuotes)
+            {
+                if (c == '"')
+                {
+                    if (i + 1 < text.Length && text[i + 1] == '"')
+                    {
+                        field.Append('"');
+                        i++;
+                    }
+                    else
+                    {
+                        inQuotes = false;
+                    }
+                }
+                else
+                {
+                    field.Append(c);
+                }
+
+                continue;
+            }
+
+            switch (c)
+            {
+                case '"':
+                    inQuotes = true;
+                    break;
+                case ',':
+                    fields.Add(field.ToString());
+                    field.Clear();
+                    break;
+                case '\r':
+                    // CRLF 交给后面的 \n 收尾；单独出现的 \r（老 Mac 换行）不支持，会当成空白。
+                    break;
+                case '\n':
+                    fields.Add(field.ToString());
+                    field.Clear();
+                    rows.Add(fields.ToArray());
+                    fields.Clear();
+                    break;
+                default:
+                    field.Append(c);
+                    break;
+            }
+        }
+
+        // 最后一行没有换行符时也要收进来
+        if (field.Length > 0 || fields.Count > 0)
+        {
+            fields.Add(field.ToString());
+            rows.Add(fields.ToArray());
+        }
+
+        return rows;
+    }
+
+    private static string CellText(string[] row, int index) =>
+        index >= 0 && index < row.Length ? row[index].Trim() : string.Empty;
+
+    /// <summary>在 CSV 表头里找列，返回 0 基下标；找不到返回 -1。</summary>
+    private static int FindColumnIndex(IReadOnlyList<string> headers, string[] aliases)
+    {
+        for (int i = 0; i < headers.Count; i++)
+        {
+            if (HeaderMatches(headers[i], aliases))
+                return i;
+        }
+
+        return -1;
+    }
+
+    private static void FillSummary(BirthdayImportResult result)
+    {
+        result.Message = result.SuccessCount == 0 && result.ErrorCount == 0
+            ? "导入完成：表格中没有有效数据。"
+            : $"导入完成：成功 {result.SuccessCount} 条，失败 {result.ErrorCount} 条。";
+    }
+
+    // ------------------------------------------------------------------ 公共解析
 
     /// <summary>在表头行中查找匹配任一别名的列号（1 基）；找不到返回 0。</summary>
     private static int FindColumn(IXLRangeRow headerRow, string[] aliases)
     {
         foreach (var cell in headerRow.Cells())
         {
-            string header = cell.GetString().Trim();
-            if (string.IsNullOrEmpty(header))
-                continue;
-
-            foreach (var alias in aliases)
-            {
-                if (string.Equals(header, alias, StringComparison.OrdinalIgnoreCase))
-                    return cell.Address.ColumnNumber;
-            }
+            if (HeaderMatches(cell.GetString(), aliases))
+                return cell.Address.ColumnNumber;
         }
+
         return 0;
+    }
+
+    private static bool HeaderMatches(string header, string[] aliases)
+    {
+        header = header.Trim();
+        if (header.Length == 0)
+            return false;
+
+        foreach (var alias in aliases)
+        {
+            if (string.Equals(header, alias, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool TryParseBirthday(IXLCell cell, out DateTime birthday)
