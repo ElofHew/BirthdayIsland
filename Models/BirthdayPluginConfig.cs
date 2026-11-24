@@ -12,6 +12,9 @@ public class BirthdayPluginConfig
     public string? LastImportFileName { get; set; }
 
     public LeapDayDisplayMode LeapDayDisplayMode { get; set; } = LeapDayDisplayMode.OnlyOnFeb29;
+
+    /// <summary>定时提醒设置。旧版本配置文件里没有这一段，反序列化时会走属性默认值。</summary>
+    public BirthdayReminderConfig Reminder { get; set; } = new();
 }
 
 public enum LeapDayDisplayMode

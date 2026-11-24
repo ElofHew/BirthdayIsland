@@ -19,6 +19,11 @@ public class Plugin : PluginBase
         services.AddSingleton<BirthdayDataService>();
         services.AddSingleton<ExcelImportService>();
 
+        // 生日歌播放（复用宿主的 IAudioService）与定时提醒的提醒提供方。
+        // 提醒提供方注册进来后会出现在「设置 → 提醒」里，可以单独调音效和特效。
+        services.AddSingleton<BirthdaySongPlayer>();
+        services.AddNotificationProvider<BirthdayNotificationProvider>();
+
         // 设置页 ViewModel
         services.AddTransient<BirthdaySettingsPageViewModel>();
 

@@ -56,6 +56,32 @@ public class BirthdayDataService
             Save();
     }
 
+    /// <summary>
+    /// 用编辑后的对象替换列表中原来那条。
+    /// </summary>
+    /// <remarks>
+    /// <see cref="BirthdayPerson"/> 是不带变更通知的普通类，就地改属性界面不会更新，
+    /// 所以走 ObservableCollection 的「替换」语义 —— 顺便保证列表顺序不变。
+    /// </remarks>
+    public void ReplacePerson(BirthdayPerson original, BirthdayPerson updated)
+    {
+        int index = People.IndexOf(original);
+        if (index < 0)
+            return;
+
+        People[index] = updated;
+        Save();
+    }
+
+    /// <summary>
+    /// 记录今天已经发过提醒。存盘是为了应用在同一天重启后不再重复提醒。
+    /// </summary>
+    public void MarkReminderFired(DateTime date)
+    {
+        Config.Reminder.LastFiredDate = date.Date;
+        Save();
+    }
+
     public void Clear()
     {
         People.Clear();
@@ -88,6 +114,10 @@ public class BirthdayDataService
         People.Clear();
         foreach (var person in Config.People)
             People.Add(person);
+
+        // 旧版本配置文件里没有 Reminder 这一段；如果哪天手改 json 写成 "Reminder": null，
+        // 这里兜一下，否则设置页和提醒服务都会空引用。
+        Config.Reminder ??= new BirthdayReminderConfig();
 
         DataChanged?.Invoke(this, EventArgs.Empty);
     }
