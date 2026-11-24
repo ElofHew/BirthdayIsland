@@ -49,6 +49,19 @@ public class BirthdayNotificationProvider : NotificationProviderBase
     /// <summary>0 = 空闲，1 = 已有一个检查在 UI 线程排队/执行中。</summary>
     private int _checkInFlight;
 
+    /// <summary>
+    /// 距离上一次真正发出提醒过去了多久，用于挡住自动化套娃。
+    /// </summary>
+    /// <remarks>
+    /// 2 秒是个折中：递归套娃是毫秒级，一定被挡住；
+    /// 而用户手动点两次、或两个工作流相隔一会儿各发一次，仍然照发不误
+    /// （自动化优先级高于插件设置，不能因为「今天发过」就不执行）。
+    /// </remarks>
+    private static readonly TimeSpan RepeatGuardWindow = TimeSpan.FromSeconds(2);
+
+    private readonly object _announceLock = new();
+    private DateTime _lastAnnounceAt = DateTime.MinValue;
+
     /// <summary>发出一次生日提醒后触发，供自动化触发器使用。</summary>
     public event EventHandler<BirthdayAnnouncementEventArgs>? Announced;
 
@@ -94,6 +107,12 @@ public class BirthdayNotificationProvider : NotificationProviderBase
     private void CheckAndNotify()
     {
         var reminder = _dataService.Config.Reminder;
+
+        // 「由自动化驱动」时插件完全不参与计时：两条路都开着的话，同一分钟会各发一条，
+        // 与其在代码里猜用户想要哪条，不如让用户显式选一套。
+        if (reminder.ControlSource != ReminderControlSource.PluginSettings)
+            return;
+
         if (!reminder.IsEnabled)
             return;
 
@@ -116,9 +135,9 @@ public class BirthdayNotificationProvider : NotificationProviderBase
     /// 立即发出一次生日提醒（自动化行动或手动触发用）。
     /// </summary>
     /// <remarks>
-    /// 和定时提醒的区别只有一点：这里不看「今天是否已经发过」，用户显式要求就发。
-    /// 但发完仍然会记账 —— 于是「自动化里 8:00 发过一次」和「插件自带 8:00 提醒」
-    /// 不会在同一分钟各发一条（自带的那个会看到今天已发而跳过）。
+    /// 和定时提醒的区别只有一点：这里不看「今天是否已经发过」，也不看 <c>ControlSource</c> ——
+    /// 自动化是用户显式编排的，插件设置不该把它拦下来（自动化优先级高于插件自带计时）。
+    /// 但发完仍然会记账，于是插件自带的计时当天就不会再补一条。
     /// </remarks>
     public void AnnounceNow()
     {
@@ -151,6 +170,16 @@ public class BirthdayNotificationProvider : NotificationProviderBase
 
     private void Announce(IReadOnlyList<string> names, BirthdayReminderConfig reminder)
     {
+        if (!TryEnterAnnounce())
+        {
+            // 走到这里基本只有一种情况：工作流把「生日提醒触发时」和「发送生日提醒」
+            // 串在了一起，Announce → 触发器 → 行动 → AnnounceNow → Announce …
+            // 宿主那边工作流是异步跑的，所以用「上一次提醒的时间」而不是重入标志位来挡，
+            // 异步套娃同样能在第二层停住。
+            _logger.LogWarning("两秒内已经发过一次生日提醒，忽略这次重复触发（多半是自动化里触发器与行动互相套娃）");
+            return;
+        }
+
         ShowBirthdayNotification(names, reminder);
 
         // 先抛事件再播歌：自动化里挂在「生日提醒触发时」的工作流能立刻跑起来，
@@ -159,6 +188,22 @@ public class BirthdayNotificationProvider : NotificationProviderBase
 
         if (reminder.IsSongEnabled)
             _songPlayer.Play(reminder.SongPath, reminder.SongDurationSeconds);
+    }
+
+    /// <summary>
+    /// 过了重复保护窗口才允许这一次提醒，返回 false 表示应忽略。
+    /// </summary>
+    private bool TryEnterAnnounce()
+    {
+        lock (_announceLock)
+        {
+            var now = DateTime.UtcNow;
+            if (now - _lastAnnounceAt < RepeatGuardWindow)
+                return false;
+
+            _lastAnnounceAt = now;
+            return true;
+        }
     }
 
     private void ShowBirthdayNotification(IReadOnlyList<string> names, BirthdayReminderConfig reminder)
