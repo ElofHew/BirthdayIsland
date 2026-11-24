@@ -10,26 +10,25 @@
 		<!-- 必须：允许程序集作为插件被动态加载，并将依赖 DLL 与 .deps.json 输出到 bin 目录 -->
 		<EnableDynamicLoading>true</EnableDynamicLoading>
 		<!-- 插件版本号 -->
-		<Version>2.5.0.0</Version>
-		<AssemblyVersion>2.5.0.0</AssemblyVersion>
-		<FileVersion>2.5.0.0</FileVersion>
+		<Version>2.6.0.0</Version>
+		<AssemblyVersion>2.6.0.0</AssemblyVersion>
+		<FileVersion>2.6.0.0</FileVersion>
 		<!-- 与 XAML 中的 x:DataType 编译期绑定配合 -->
 		<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
 	</PropertyGroup>
 
-	<!-- ClassIsland 插件 SDK 版本：沿用空白模板的写法，保证与本机 ClassIsland 匹配 -->
-	<PropertyGroup>
-		<ClassIslandPluginSdkVersion>1.7.106.2-dev-v2</ClassIslandPluginSdkVersion>
-	</PropertyGroup>
-
 	<ItemGroup>
-		<!-- ClassIsland 插件 SDK：提供 PluginBase / ComponentBase / SettingsPageBase 等 -->
-		<PackageReference Include="ClassIsland.PluginSdk" Version="$(ClassIslandPluginSdkVersion)">
-			<ExcludeAssets>runtime; native</ExcludeAssets>
-		</PackageReference>
+		<!-- 宿主源码在仓库外面两级：本插件放在 ClassIsland/plugins/BirthdayIsland。
+		     原模板用的是 PackageReference ClassIsland.PluginSdk 1.7.106.2-dev-v2，但这个版本
+		     在任何 NuGet 源上都不存在（镜像里只有 2.0.1 ~ 2.1.2），还原必然失败。
+		     改成源码引用：PluginSdk 本质上只是把 ClassIsland.Core 转手一次，直接引 Core 等价，
+		     而且不需要联网、不会出现「插件 SDK 版本和宿主版本对不上」的问题。
+		     Private=false：Core 由宿主加载，插件包绝不能自带一份，否则类型身份会分裂。 -->
+		<ProjectReference Include="..\..\ClassIsland.Core\ClassIsland.Core.csproj"
+		                  Private="false" ExcludeAssets="runtime" />
 		<!-- MVVM 工具：ObservableObject / RelayCommand 源生成器 -->
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
-		<!-- Excel(.xlsx) 解析 -->
+		<!-- Excel(.xlsx) 解析。注意它只认 OpenXML，打不开老的 .xls 二进制格式，所以导入入口只放行 xlsx / csv。 -->
 		<PackageReference Include="ClosedXML" Version="0.104.2" />
 	</ItemGroup>
 
